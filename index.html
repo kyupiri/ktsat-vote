@@ -45,7 +45,7 @@
   .team-card.rank1 { border: 2px solid var(--gold); background: #FCF3DE; }
   .team-card.rank2 { border: 2px solid var(--silver); background: #F2F1EC; }
   .team-card.rank3 { border: 2px solid var(--bronze); background: #FBEDE7; }
-  .rank-badge { position: absolute; top: 10px; right: 10px; width: 24px; height: 24px; border-radius: 50%; display: none; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #fff; }
+  .rank-badge { position: absolute; top: 9px; right: 9px; height: 20px; padding: 0 8px; border-radius: 10px; display: none; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #fff; white-space: nowrap; }
   .team-card.rank1 .rank-badge { display: flex; background: var(--gold); }
   .team-card.rank2 .rank-badge { display: flex; background: var(--silver); }
   .team-card.rank3 .rank-badge { display: flex; background: var(--bronze); }
@@ -147,7 +147,7 @@
       <div class="card">
         <div class="card-title">순위 투표 — 카드를 누르면 1→2→3등 순서로 지정됩니다</div>
         <div class="notice" id="notice"></div>
-        <div class="judge-notice" id="judgeNotice">평가위원도 동일하게 1·2·3등을 선택해 투표합니다 (자기 팀 제한 없음).</div>
+        <div class="judge-notice" id="judgeNotice">평가위원은 가중치 2배가 적용됩니다 — 1등 6점 · 2등 4점 · 3등 2점 (자기 팀 제한 없음).</div>
         <div class="vote-grid" id="voteGrid"></div>
         <div class="submit-row">
           <div class="sel-info"><span class="rank-hint" id="rankHint"><span class="h1">🥇 -</span> · <span class="h2">🥈 -</span> · <span class="h3">🥉 -</span></span></div>
@@ -193,9 +193,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { getDatabase, ref, onValue, runTransaction, set, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-  // 결과 비밀번호는 평문으로 두지 않고 SHA-256 해시로 비교 (F12로 원문 노출 방지)
-  // 아래 해시는 'ax2026'의 SHA-256 값. 비번 변경 시 새 해시로 교체하세요.
-  const RESULT_PW_HASH = 'ffb363cbac73cb5d5f5ed87c87e83a2a069358c6ea8e719ed30bb924537e3739';
+  const RESULT_PW_HASH = '7e980b6326678addc99d00feb99c182deaa7ecea2c58ff40e1c6691cf801c105';
 
   async function sha256Hex(str) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
@@ -280,7 +278,6 @@
     }
   }
 
-  // 결과 데이터(votes/votedTeams)는 잠금 해제 후에만 구독 → 평소엔 브라우저로 내려오지 않음
   let resultSubsStarted = false;
   function startResultSubscriptions() {
     if (resultSubsStarted) { renderResults(); return; }
@@ -321,12 +318,30 @@
   }
 
   myTeamSel.addEventListener('change', async () => {
+    const picked = myTeamSel.value;
+
+    if (JUDGES.includes(picked)) {
+      const entered = prompt('평가위원 인증을 위해 비밀번호를 입력하세요.');
+      const ok = entered !== null && (await sha256Hex(entered)) === RESULT_PW_HASH;
+      if (!ok) {
+        if (entered !== null) showNotice('비밀번호가 올바르지 않아 평가위원 선택을 취소했어요.', 'warn');
+        myTeamSel.value = '';
+        myTeam = ''; isJudge = false; selected = []; hasVoted = false;
+        voterBadge.style.display = 'none';
+        judgeNotice.style.display = 'none';
+        votedChip.style.display = 'none';
+        resetBtn.style.display = 'none';
+        renderGrid();
+        updateSubmit();
+        return;
+      }
+    }
+
     myTeam = myTeamSel.value;
     isJudge = JUDGES.includes(myTeam);
     selected = [];
     const myKey = myTeam.replace(/ /g, '_');
 
-    // 본인 투표 기록만 조회 (전체 votedTeams를 받지 않아 다른 사람 투표 내역 노출 방지)
     let myPrev = null;
     if (myTeam) {
       try {
@@ -376,7 +391,7 @@
       const rankCls = rankIdx === 0 ? ' rank1' : rankIdx === 1 ? ' rank2' : rankIdx === 2 ? ' rank3' : '';
       const card = document.createElement('div');
       card.className = 'team-card' + (isSelf?' self':'') + rankCls + (hasVoted?' voted-state':'');
-      const medal = rankIdx === 0 ? '1' : rankIdx === 1 ? '2' : rankIdx === 2 ? '3' : '';
+      const medal = rankIdx === 0 ? '1등' : rankIdx === 1 ? '2등' : rankIdx === 2 ? '3등' : '';
       card.innerHTML = `
         <div class="tnum">TEAM ${String(i+1).padStart(2,'0')}</div>
         <div class="tname">${team}</div>
@@ -418,7 +433,7 @@
     submitBtn.disabled = true;
     submitBtn.textContent = '저장 중...';
     try {
-      const points = [3, 2, 1];
+      const points = isJudge ? [6, 4, 2] : [3, 2, 1];
       for (let i = 0; i < selected.length; i++) {
         const team = selected[i];
         const pt = points[i];
@@ -440,13 +455,19 @@
 
   async function resetVote() {
     if (!myTeam || !hasVoted) return;
-    if (!confirm(`${myTeam}의 투표를 초기화할까요?`)) return;
+    const entered = prompt(`${myTeam}의 투표를 초기화하려면 비밀번호를 입력하세요.`);
+    if (entered === null) return; // 취소
+    const enteredHash = await sha256Hex(entered);
+    if (enteredHash !== RESULT_PW_HASH) {
+      showNotice('비밀번호가 올바르지 않아 초기화를 취소했어요.', 'warn');
+      return;
+    }
     try {
       const myKey = myTeam.replace(/ /g, '_');
       const s = await get(ref(db, `votedTeams/${myKey}`));
       const prev = s.exists() ? s.val() : [];
       const prevArr = Array.isArray(prev) ? prev : [];
-      const points = [3, 2, 1];
+      const points = isJudge ? [6, 4, 2] : [3, 2, 1];
       for (let i = 0; i < prevArr.length; i++) {
         const team = prevArr[i];
         const pt = points[i] || 0;
