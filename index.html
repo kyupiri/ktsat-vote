@@ -263,11 +263,11 @@
 
   // 평가위원 채점 항목 (key, 라벨, 만점)
   const CRITERIA = [
-    { key: 'impact',  label: '업무 임팩트', max: 30 },
-    { key: 'apply',   label: '적용가능성', max: 20 },
-    { key: 'scale',   label: '확장성',     max: 15 },
+    { key: 'impact',  label: '혁신성', max: 20 },
+    { key: 'apply',   label: '사용자 경험', max: 20 },
+    { key: 'scale',   label: '업무효율',     max: 20 },
     { key: 'impl',    label: '구현완성도', max: 20 },
-    { key: 'present', label: '발표평가',   max: 15 },
+    { key: 'present', label: '실무적용 가능성',   max: 20 },
   ];
   const MAX_TOTAL = CRITERIA.reduce((s, c) => s + c.max, 0); // 100
 
